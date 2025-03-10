@@ -1,4 +1,3 @@
-import { Category } from 'src/categories/entities/category.entity';
 import { IsInt, IsNotEmpty, IsNumber, IsString } from 'class-validator';
 
 export class CreateProductDto {

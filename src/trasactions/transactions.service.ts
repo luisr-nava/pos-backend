@@ -10,8 +10,10 @@ import {
   Transaction,
   TransactionContents,
 } from './entities/transaction.entity';
-import { Repository } from 'typeorm';
-import { Product } from 'src/products/entities/product.entity';
+import { Between, FindManyOptions, Repository } from 'typeorm';
+import { Product } from '../products/entities/product.entity';
+import { endOfDay, isValid, parseISO, startOfDay } from 'date-fns';
+import { CouponsService } from '../cupons/coupons.service';
 
 @Injectable()
 export class TrasactionsService {
@@ -21,11 +23,12 @@ export class TrasactionsService {
     @InjectRepository(TransactionContents)
     private readonly transactionContentsRepository: Repository<TransactionContents>,
     @InjectRepository(Product)
-    private readonly ProductRepository: Repository<Product>,
+    private readonly productRepository: Repository<Product>,
+    private readonly couponsService: CouponsService,
   ) {}
 
   async create(createTransactionDto: CreateTransactionDto) {
-    await this.ProductRepository.manager.transaction(
+    await this.productRepository.manager.transaction(
       async (transactionEntityManager) => {
         const transaction = new Transaction();
 
@@ -33,8 +36,19 @@ export class TrasactionsService {
           (total, item) => total + item.quantity * item.price,
           0,
         );
-
         transaction.total = total;
+
+        if (createTransactionDto.coupon) {
+          const coupon = await this.couponsService.applyCoupon(
+            createTransactionDto.coupon,
+          );
+          const discount = (coupon.percentage / 100) * total;
+
+          transaction.discount = discount;
+          transaction.coupon = coupon.name;
+
+          transaction.total -= discount;
+        }
 
         for (const contents of createTransactionDto.contents) {
           const product = await transactionEntityManager.findOneBy(Product, {
@@ -73,19 +87,66 @@ export class TrasactionsService {
     return 'Venta Almacenada correctamante';
   }
 
-  findAll() {
-    return `This action returns all trasactions`;
+  findAll(transactionDate?: string) {
+    const options: FindManyOptions<Transaction> = {
+      relations: {
+        contents: true,
+      },
+    };
+
+    if (transactionDate) {
+      const date = parseISO(transactionDate);
+
+      if (!isValid(date)) {
+        throw new BadRequestException('La fecha no es válida');
+      }
+
+      const start = startOfDay(date);
+
+      const end = endOfDay(date);
+
+      options.where = {
+        transactionDate: Between(start, end),
+      };
+    }
+
+    return this.transactionRepository.find(options);
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} trasaction`;
+  async findOne(id: number) {
+    const transaction = await this.transactionRepository.findOne({
+      where: { id },
+      relations: {
+        contents: true,
+      },
+    });
+
+    if (!transaction) {
+      throw new NotFoundException(`La venta con el id: ${id} no existe`);
+    }
+
+    return transaction;
   }
 
-  update(id: number, updateTrasactionDto: UpdateTrasactionDto) {
-    return `This action updates a #${id} trasaction`;
-  }
+  async remove(id: number) {
+    const transaction = await this.findOne(id);
 
-  remove(id: number) {
-    return `This action removes a #${id} trasaction`;
+    for (const contents of transaction.contents) {
+      const product = await this.productRepository.findOneBy({
+        id: contents.product.id,
+      });
+
+      product.inventory += contents.quantity;
+      await this.productRepository.save(product);
+
+      const transactionContents =
+        await this.transactionContentsRepository.findOneBy({ id: contents.id });
+
+      await this.transactionContentsRepository.remove(transactionContents);
+    }
+
+    await this.transactionRepository.remove(transaction);
+
+    return { message: 'Venta Eliminada' };
   }
 }

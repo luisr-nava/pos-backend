@@ -6,10 +6,12 @@ import {
   Patch,
   Param,
   Delete,
+  Query,
 } from '@nestjs/common';
 import { TrasactionsService } from './transactions.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTrasactionDto } from './dto/update-transaction.dto';
+import { IdValidationPipe } from '../common/pipes/id-validation/id-validation.pipe';
 
 @Controller('transactions')
 export class TrasactionsController {
@@ -21,25 +23,17 @@ export class TrasactionsController {
   }
 
   @Get()
-  findAll() {
-    return this.trasactionsService.findAll();
+  findAll(@Query('transactionDate') transactionDate: string) {
+    return this.trasactionsService.findAll(transactionDate);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
+  findOne(@Param('id', IdValidationPipe) id: string) {
     return this.trasactionsService.findOne(+id);
   }
 
-  @Patch(':id')
-  update(
-    @Param('id') id: string,
-    @Body() updateTrasactionDto: UpdateTrasactionDto,
-  ) {
-    return this.trasactionsService.update(+id, updateTrasactionDto);
-  }
-
   @Delete(':id')
-  remove(@Param('id') id: string) {
+  remove(@Param('id', IdValidationPipe) id: string) {
     return this.trasactionsService.remove(+id);
   }
 }
