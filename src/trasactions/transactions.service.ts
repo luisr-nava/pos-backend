@@ -84,7 +84,7 @@ export class TrasactionsService {
         }
       },
     );
-    return 'Venta Almacenada correctamante';
+    return { message: 'Venta Almacenada correctamante' };
   }
 
   findAll(transactionDate?: string) {
